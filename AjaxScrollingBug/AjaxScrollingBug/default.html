@@ -20,17 +20,24 @@
     <input id="btnRun" type="button" value="Simple" data-bind="click: normal" />
     <input id="btnBatch" type="button" value="Batch" data-bind="click: batch"/>
     <input id="btnTimeout" type="button" value="Timeout" data-bind="click: timeout"/>
+
     <ul data-bind="foreach: results" id="results">
         <li data-bind="css: {found: result()}"><span data-bind="text: message()"></span></li>
     </ul>
+    
     <script type="text/javascript">
 
+        // Used for storing results of the ajax requests - result will be true once a result
+        // has been received.
         function ResultModel(result) {
             var rm = this;
             rm.result = ko.observable(result);
+
+            // Set the message based on result
             rm.message = ko.computed(function () { if (rm.result()) { return "Complete" } else { return "Waiting" } });
         }
 
+        // Used for binding to the buttons / the results list
         function ScrollBugModel() {
             self = this;
 
@@ -45,6 +52,8 @@
             // Used to displaying results as they come in
             self.results = ko.observableArray();
 
+
+            // Populate the results array with a whole bunch of "waiting" results
             self.reset = function () {
                 self.results([]);
                 for (var x = 0; x < self.noOfRequests() ; x++) {
@@ -52,17 +61,37 @@
                 }
             };
 
+            // Normal code - fast & works, except if you scroll a lot on the iphone
+            //
+            // Scrolling is a primary citizen in iOS, and takes priority over 
+            // everything else. This is commonly complained about on 
+            // StackOverflow:
+            // http://stackoverflow.com/questions/8361874/ios-javascript-dom-freezing
+            //
+            // We believe that iOS receives the ajax requests back during a scroll, 
+            // and passes the event back to the javascript engine. However, if the
+            // scrolling takes too long, jquery never receives the event for some 
+            // reason (the zombie object still exists in the queue, but never 
+            // receives the call back)
             self.normal = function () {
+                // Reset the results
                 self.reset();
+
+                // Spawn requests
                 for (var x = 0; x < self.noOfRequests() ; x++) {
                     $.ajax({
                         url: "/api/values/" + x + "?delay=" + self.delay(),
                     }).done(function (data, status, jqXHR) {
+
+                        // Set the result to true
                         self.results()[data].result(true);
                     });
                 }
             };
 
+            // Helper function for the batched request test - does the
+            // actual requests, and then pops off the next item from the 
+            // queue if there is one
             self.batchedRequest = function (x) {
                 $.ajax({
                     url: "/api/values/" + x + "?delay=" + self.delay(),
@@ -74,30 +103,52 @@
                 });
             }
 
+            // Batched Request - slow & works, and seems to be more resistent to scrolling
+            // but still has problems
             self.batch = function () {
+
+                // Reset results
                 self.reset();
+
+                // Populate the queue of items to batch
                 for (var x = 0; x < self.noOfRequests() ; x++) {
                     self.queue.unshift(x);
                 }
+
+                // Spawn 4 "batches" that will keep consuming the queue
+                // until it's empty
                 for (var y = 0; y < self.batchSize(); y++) {
                     self.batchedRequest(self.queue.pop());
                 }
             }
 
+            // The "fix"
+            //
+            // By setting a timeout on beforeSend, which queues an event to fire 
+            // after the expected return time of the ajax request, it some how 
+            // manages to "free" up the lost ajax request.
+            //
+            // The super weird thing is that the request responds _straight_ 
+            // after the scrolling ends, even if the timeout event hasn't
+            // been raised yet
             self.timeout = function () {
                 self.reset();
                 for (var x = 0; x < self.noOfRequests() ; x++) {
+                    // Called as a nested function to keep complete variable in scope
+                    // per request
                     function createRequest() {
                         var complete = false;
                         $.ajax({
                             url: "/api/values/" + x + "?delay=" + self.delay(),
+                            // The magic - self refering timeout function that 
+                            // seems to keep everything oiled...
                             beforeSend: function () {
                                 function refreshTimeout() {
                                     if (!complete) {
                                         setTimeout(refreshTimeout, 15000);
                                     }
                                 }
-                                refreshTimeout();
+                                setTimeout(refreshTimeout, 15000);
                             },
                         }).done(function (data, status, jqXHR) {
                             self.results()[data].result(true);
