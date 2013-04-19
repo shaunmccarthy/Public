@@ -3,6 +3,7 @@
     <meta name="viewport" content="width = 320" />
     <title>Sample of Scroll bug</title>
     <script type="text/javascript" src="scripts/jquery-1.9.1.js"></script>
+    <script type="text/javascript" src="scripts/knockout-2.1.0.js"></script>
     <style>
         .found
         {
@@ -16,72 +17,94 @@
     </style>
 </head>
 <body>
-    <input id="btnRun" type="button" value="Simple" />
-    <input id="btnBatch" type="button" value="Batch" />
-    <input id="btnTimeout" type="button" value="Timeout" />
-    <ul id="results">
-        <li>waiting</li>
+    <input id="btnRun" type="button" value="Simple" data-bind="click: normal" />
+    <input id="btnBatch" type="button" value="Batch" data-bind="click: batch"/>
+    <input id="btnTimeout" type="button" value="Timeout" data-bind="click: timeout"/>
+    <ul data-bind="foreach: results" id="results">
+        <li data-bind="css: {found: result()}"><span data-bind="text: message()"></span></li>
     </ul>
     <script type="text/javascript">
-        var queue = [];
-        var batchSize = 4;
-        var delay = 200;
 
-        $("#btnRun").click(function () {
-            $("#results").empty();
-            for (var x = 0; x < 100; x++) {
-                $("#results").append("<li id='request" + x + "'>Waiting...</li>");
-                $.ajax({
-                    url: "/api/values/" + x + "?delay=" + delay,
-                }).done(function (data, status, jqXHR) {
-                    $("#request" + data).addClass("found").text("Complete");
-                });
-            }
-        });
-
-        function batchedRequest(x) {
-            $.ajax({
-                url: "/api/values/" + x + "?delay=" + delay,
-            }).done(function (data, status, jqXHR) {
-                $("#request" + data).addClass("found").text("Complete");
-                if (queue.length > 0) {
-                    batchedRequest(queue.pop());
-                }
-            });
+        function ResultModel(result) {
+            var rm = this;
+            rm.result = ko.observable(result);
+            rm.message = ko.computed(function () { if (rm.result()) { return "Complete" } else { return "Waiting" } });
         }
 
-        $("#btnBatch").click(function () {
-            $("#results").empty();
-            for (var x = 0; x < 100; x++) {
-                $("#results").append("<li id='request" + x + "'>Waiting...</li>");
-                queue.unshift(x);
-            }
-            for (var y = 0; y < batchSize; y++) {
-                batchedRequest(queue.pop());
-            }
-        });
+        function ScrollBugModel() {
+            self = this;
 
-        $("#btnTimeout").click(function () {
-            $("#results").empty();
-            for (var x = 0; x < 100; x++) {
-                $("#results").append("<li id='request" + x + "'>Waiting...</li>");
+            // Config
+            self.noOfRequests = ko.observable(100);
+            self.delay = ko.observable(200);
+
+            // Batching
+            self.queue = ko.observableArray();
+            self.batchSize = ko.observable(4);
+
+            // Used to displaying results as they come in
+            self.results = ko.observableArray();
+
+            self.reset = function () {
+                self.results([]);
+                for (var x = 0; x < self.noOfRequests() ; x++) {
+                    self.results.unshift(new ResultModel(false));
+                }
+            };
+
+            self.normal = function () {
+                self.reset();
+                for (var x = 0; x < self.noOfRequests() ; x++) {
+                    $.ajax({
+                        url: "/api/values/" + x + "?delay=" + self.delay(),
+                    }).done(function (data, status, jqXHR) {
+                        self.results()[data].result(true);
+                    });
+                }
+            };
+
+            self.batchedRequest = function (x) {
                 $.ajax({
-                    url: "/api/values/" + x + "?delay=" + delay,
-                    beforeSend: function () {
-                        function doNothing() {
-                        }
-                        function refreshTimeout() {
-                            setTimeout(doNothing, 15000);
-                        }
-                        refreshTimeout();
-                    }
+                    url: "/api/values/" + x + "?delay=" + self.delay(),
                 }).done(function (data, status, jqXHR) {
-                    $("#request" + data).addClass("found").text("Complete");
-                })
+                    self.results()[data].result(true);
+                    if (self.queue().length > 0) {
+                        self.batchedRequest(self.queue.pop());
+                    }
+                });
             }
-        });
 
+            self.batch = function () {
+                self.reset();
+                for (var x = 0; x < self.noOfRequests() ; x++) {
+                    self.queue.unshift(x);
+                }
+                for (var y = 0; y < self.batchSize(); y++) {
+                    self.batchedRequest(self.queue.pop());
+                }
+            }
 
+            self.timeout = function () {
+                self.reset();
+                for (var x = 0; x < self.noOfRequests() ; x++) {
+                    $.ajax({
+                        url: "/api/values/" + x + "?delay=" + self.delay(),
+                        beforeSend: function () {
+                            function doNothing() {
+                            }
+                            function refreshTimeout() {
+                                setTimeout(doNothing, 15000);
+                            }
+                            refreshTimeout();
+                        },
+                    }).done(function (data, status, jqXHR) {
+                        self.results()[data].result(true);
+                    });
+                }
+            }
+        }
+
+        ko.applyBindings(new ScrollBugModel());
     </script>
 
 </body>
