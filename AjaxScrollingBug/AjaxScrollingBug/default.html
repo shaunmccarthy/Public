@@ -65,19 +65,25 @@
             $("#results").empty();
             for (var x = 0; x < 100; x++) {
                 $("#results").append("<li id='request" + x + "'>Waiting...</li>");
-                $.ajax({
-                    url: "/api/values/" + x + "?delay=" + delay,
-                    beforeSend: function () {
-                        function doNothing() {
+                function createRequest() {
+                    var completed = false;
+                    $.ajax({
+                        url: "/api/values/" + x + "?delay=" + delay,
+                        beforeSend: function () {
+                            function refreshTimeout() {
+                                if (completed === false) {
+                                    setTimeout(refreshTimeout, 15000);
+                                }
+                            }
+                            refreshTimeout();
                         }
-                        function refreshTimeout() {
-                            setTimeout(doNothing, 15000);
-                        }
-                        refreshTimeout();
-                    }
-                }).done(function (data, status, jqXHR) {
-                    $("#request" + data).addClass("found").text("Complete");
-                })
+                    }).done(function (data, status, jqXHR) {
+                        $("#request" + data).addClass("found").text("Complete");
+                    }).always(function () {
+                        completed = true;
+                    });
+                }
+                createRequest();
             }
         });
 
