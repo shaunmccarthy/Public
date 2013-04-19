@@ -1,0 +1,6 @@
+
+        public string GetByDelay(string id, int delay)
+        {
+            Thread.Sleep(delay * 1000);
+            return id;
+        }

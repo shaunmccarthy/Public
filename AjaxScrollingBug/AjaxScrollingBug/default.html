@@ -1,0 +1,94 @@
+<html>
+<head>
+    <meta name="viewport" content="width = 320" />
+    <title>Sample of Scroll bug</title>
+    <script type="text/javascript" src="scripts/jquery-1.9.1.js"></script>
+    <style>
+        .found
+        {
+            color: green;
+        }
+
+        li
+        {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <input id="btnRun" type="button" value="Simple" />
+    <input id="btnBatch" type="button" value="Batch" />
+    <input id="btnTimeout" type="button" value="Timeout" />
+    <ul id="results">
+        <li>waiting</li>
+    </ul>
+    <script type="text/javascript">
+        var queue = [];
+        var batchSize = 4;
+        var delay = 200;
+
+        $("#btnRun").click(function () {
+            $("#results").empty();
+            for (var x = 0; x < 100; x++) {
+                $("#results").append("<li id='request" + x + "'>Waiting...</li>");
+                $.ajax({
+                    url: "/api/values/" + x + "?delay=" + delay,
+                }).done(function (data, status, jqXHR) {
+                    $("#request" + data).addClass("found").text("Complete");
+                });
+            }
+        });
+
+        function batchedRequest(x) {
+            $.ajax({
+                url: "/api/values/" + x + "?delay=" + delay,
+            }).done(function (data, status, jqXHR) {
+                $("#request" + data).addClass("found").text("Complete");
+                if (queue.length > 0) {
+                    batchedRequest(queue.pop());
+                }
+            });
+        }
+
+        $("#btnBatch").click(function () {
+            $("#results").empty();
+            for (var x = 0; x < 100; x++) {
+                $("#results").append("<li id='request" + x + "'>Waiting...</li>");
+                queue.unshift(x);
+            }
+            for (var y = 0; y < batchSize; y++) {
+                batchedRequest(queue.pop());
+            }
+        });
+
+        $("#btnTimeout").click(function () {
+            $("#results").empty();
+            for (var x = 0; x < 100; x++) {
+                $("#results").append("<li id='request" + x + "'>Waiting...</li>");
+                function createRequest() {
+                    var completed = false;
+                    $.ajax({
+                        url: "/api/values/" + x + "?delay=" + delay,
+                        beforeSend: function () {
+                            function refreshTimeout() {
+                                if (completed === false) {
+                                    setTimeout(refreshTimeout, 15000);
+                                }
+                            }
+                            refreshTimeout();
+                        }
+                    }).done(function (data, status, jqXHR) {
+                        $("#request" + data).addClass("found").text("Complete");
+                    }).always(function () {
+                        completed = true;
+                    });
+                }
+                createRequest();
+            }
+        });
+
+
+    </script>
+
+</body>
+</html>
