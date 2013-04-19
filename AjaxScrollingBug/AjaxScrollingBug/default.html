@@ -87,19 +87,25 @@
             self.timeout = function () {
                 self.reset();
                 for (var x = 0; x < self.noOfRequests() ; x++) {
-                    $.ajax({
-                        url: "/api/values/" + x + "?delay=" + self.delay(),
-                        beforeSend: function () {
-                            function doNothing() {
-                            }
-                            function refreshTimeout() {
-                                setTimeout(doNothing, 15000);
-                            }
-                            refreshTimeout();
-                        },
-                    }).done(function (data, status, jqXHR) {
-                        self.results()[data].result(true);
-                    });
+                    function createRequest() {
+                        var complete = false;
+                        $.ajax({
+                            url: "/api/values/" + x + "?delay=" + self.delay(),
+                            beforeSend: function () {
+                                function refreshTimeout() {
+                                    if (!complete) {
+                                        setTimeout(refreshTimeout, 15000);
+                                    }
+                                }
+                                refreshTimeout();
+                            },
+                        }).done(function (data, status, jqXHR) {
+                            self.results()[data].result(true);
+                        }).always(function () {
+                            complete = true;
+                        });
+                    }
+                    createRequest();
                 }
             }
         }
