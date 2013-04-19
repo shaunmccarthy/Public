@@ -19,16 +19,35 @@
     <input id="btnRun" type="button" value="Simple" />
     <input id="btnBatch" type="button" value="Batch" />
     <input id="btnTimeout" type="button" value="Timeout" />
+
     <ul id="results">
         <li>waiting</li>
     </ul>
+
     <script type="text/javascript">
+        // Config
         var queue = [];
         var batchSize = 4;
         var delay = 200;
 
+
+        // Normal code - fast & works, except if you scroll a lot on the iphone
+        //
+        // Scrolling is a primary citizen in iOS, and takes priority over 
+        // everything else. This is commonly complained about on 
+        // StackOverflow:
+        // http://stackoverflow.com/questions/8361874/ios-javascript-dom-freezing
+        //
+        // We believe that iOS receives the ajax requests back during a scroll, 
+        // and passes the event back to the javascript engine. However, if the
+        // scrolling takes too long, jquery never receives the event for some 
+        // reason (the zombie object still exists in the queue, but never 
+        // receives the call back)
         $("#btnRun").click(function () {
+            // Reset results
             $("#results").empty();
+
+            // Spawn requests
             for (var x = 0; x < 100; x++) {
                 $("#results").append("<li id='request" + x + "'>Waiting...</li>");
                 $.ajax({
@@ -39,6 +58,9 @@
             }
         });
 
+        // Helper function for the batched request test - does the
+        // actual requests, and then pops off the next item from the 
+        // queue if there is one
         function batchedRequest(x) {
             $.ajax({
                 url: "/api/values/" + x + "?delay=" + delay,
@@ -50,26 +72,49 @@
             });
         }
 
+        // Batched Request - slow & works, and seems to be more resistent to scrolling
+        // but still has problems
         $("#btnBatch").click(function () {
+            // Reset results
             $("#results").empty();
+
+            // Populate the queue of items to batch
             for (var x = 0; x < 100; x++) {
                 $("#results").append("<li id='request" + x + "'>Waiting...</li>");
                 queue.unshift(x);
             }
+
+            // Spawn 4 "batches" that will keep consuming the queue
+            // until it's empty
             for (var y = 0; y < batchSize; y++) {
                 batchedRequest(queue.pop());
             }
         });
 
+        // The "fix"
+        //
+        // By setting a timeout on beforeSend, which queues an event to fire 
+        // after the expected return time of the ajax request, it some how 
+        // manages to "free" up the lost ajax request.
+        //
+        // The super weird thing is that the request responds _straight_ 
+        // after the scrolling ends, even if the timeout event hasn't
+        // been raised yet
         $("#btnTimeout").click(function () {
+            // Reset results
             $("#results").empty();
+
             for (var x = 0; x < 100; x++) {
                 $("#results").append("<li id='request" + x + "'>Waiting...</li>");
+                // Called as a nested function to keep complete variable in scope
+                // per request
                 function createRequest() {
                     var completed = false;
                     $.ajax({
                         url: "/api/values/" + x + "?delay=" + delay,
                         beforeSend: function () {
+                            // The magic - self refering timeout function that 
+                            // seems to keep everything oiled...
                             function refreshTimeout() {
                                 if (completed === false) {
                                     setTimeout(refreshTimeout, 15000);
