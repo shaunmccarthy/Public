@@ -22,7 +22,7 @@ webpage = urlopen('http://www.nycgo.com/restaurantweek').read()
 findRestaurants = re.findall(patFinderRestaurants,webpage)
 
 # a file to write the results out to
-f = open('D:\\temp\\rweek.csv', 'w')
+f = open('C:\\temp\\rweek.csv', 'w')
 
 # Uncomment to override results to just one restaurant for debugging
 #findRestaurants = ["Tulsi"];
